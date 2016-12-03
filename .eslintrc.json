@@ -1,0 +1,18 @@
+{
+  "env": {
+    "browser": true,
+    "node": true,
+    "jasmine": true
+  },
+  "extends": "standard",
+  "plugins": [
+    "standard",
+    "promise"
+  ],
+  "rules": {
+    "comma-dangle": [
+      "error",
+      "only-multiline"
+    ]
+  }
+}
