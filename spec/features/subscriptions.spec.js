@@ -15,25 +15,32 @@ subscription onArticleAdded {
   }
 }`
 
-    serverMock.newSubscriptionsAgent()
-      .onSubscribed((subId, subAgent) => {
-        expect(subId).toEqual(subAgent.lastSubId)
+    let agent = serverMock.newAgent().refreshSession(err => {
+      expect(err).toBeFalsy()
 
-        // generate articleAdded event for the subscription
-        modelsMock.newMember('abcde')
-          .then(member => modelsMock.newArticle(member))
-      })
-      .connect()
-      .subscribe({ query }, (err, res, subAgent) => {
-        expect(err).toBeFalsy()
-        expect(res).toEqual({
-          articleAdded: {
-            text: 'message by abcde',
-            author: { handle: 'abcde' }
-          }
+      serverMock.newSubscriptionsAgent()
+        .onSubscribed((subId, subAgent) => {
+          expect(subId).toEqual(subAgent.lastSubId)
+
+          // generate articleAdded event for the subscription
+          modelsMock.newMember('abcde')
+            .then(member => modelsMock.newArticle(member))
         })
-        subAgent.disconnect()
-        done()
-      })
+        .connect()
+        .subscribe({
+          query,
+          variables: { jwtSession: agent.getSessionJwt() }
+        }, (err, res, subAgent) => {
+          expect(err).toBeFalsy()
+          expect(res).toEqual({
+            articleAdded: {
+              text: 'message by abcde',
+              author: { handle: 'abcde' }
+            }
+          })
+          subAgent.disconnect()
+          done()
+        })
+    })
   })
 })

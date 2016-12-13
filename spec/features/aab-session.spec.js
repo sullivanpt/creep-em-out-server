@@ -1,20 +1,6 @@
 'use strict'
 
 const serverMock = require('../helpers/server.mock.js')
-const modelsMock = require('../helpers/models.mock.js')
-
-describe('server startup', () => {
-  it('should return static content', (done) => {
-    serverMock.newAgent()
-      .get('/')
-      .expect('Content-Type', /html/)
-      .expect(200, (err, res) => {
-        expect(err).toBeFalsy()
-        expect(res.text).toContain('Kilroy was here')
-        done()
-      })
-  })
-})
 
 describe('session tracking', () => {
   var agent = serverMock.newAgent() // this instance keeps the cookie
@@ -33,9 +19,10 @@ describe('session tracking', () => {
 
   it('should set session cookie and tracker on first API access', (done) => {
     agent
-      .get('/test/ping')
+      .get('/api/refresh')
       .expect(200)
-      .expect('set-cookie', /connect.sid=.*/)
+      .expect('set-cookie', /refresh.jwt=/)
+      .expect('set-cookie', /session.jwt=/)
       .end((err, res) => {
         expect(err).toBeFalsy()
         expect(res.body.tracker).toBeTruthy()
@@ -46,7 +33,7 @@ describe('session tracking', () => {
 
   it('should keep session cookie and tracker on subsequent API access', (done) => {
     agent
-      .get('/test/ping')
+      .get('/api/refresh')
       .expect(200)
       .end((err, res) => {
         expect(err).toBeFalsy()
@@ -55,38 +42,42 @@ describe('session tracking', () => {
         done()
       })
   })
-})
 
-describe('GraphQL endpoint', () => {
-  it('should accept queries', (done) => {
-    // generate article for the test
-    modelsMock.newMember('abcef')
-      .then(member => modelsMock.newArticle(member))
+  it('should reject request when tracker not in CSRF header on mutation API access', (done) => {
+    agent
+      .get('/test/mutation')
+      .expect(403)
+      .end((err, res) => {
+        expect(res.headers['set-cookie']).toBeFalsy()
+        expect(err).toBeTruthy()
+        done()
+      })
+  })
 
-    let query = `{
-  articles (authorHandle: "abcef") {
-    text,
-    author {
-      handle
-    }
-  }
-}`
-
-    serverMock.newAgent()
-      .post('/graphql')
-      .send({ query })
+  it('should accept request when tracker is in CSRF header on mutation API access', (done) => {
+    agent
+      .get('/test/mutation')
+      .use(serverMock.plugInSetMutationHeader())
       .expect(200)
       .end((err, res) => {
         expect(err).toBeFalsy()
-        expect(res.body).toEqual({
-          data: {
-            articles: [{
-              text: 'message by abcef',
-              author: { handle: 'abcef' }
-            }]
-          }
-        })
+        expect(res.headers['set-cookie']).toBeFalsy()
+        expect(res.body.tracker).toEqual(tracker)
         done()
       })
+  })
+
+  it('should support serverMock refreshSession syntax', (done) => {
+    let agent = serverMock.newAgent().refreshSession(err => {
+      expect(err).toBeFalsy()
+      agent
+        .get('/test/mutation')
+        .use(serverMock.plugInSetMutationHeader())
+        .expect(200)
+        .end((err, res) => {
+          expect(err).toBeFalsy()
+          done()
+        })
+    })
   })
 })

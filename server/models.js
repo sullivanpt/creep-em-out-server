@@ -1,7 +1,7 @@
 'use strict'
 
-const { Article } = require('./article/model')
-const { Member } = require('./member/model')
+const { Article } = require('./documents/article.model')
+const { Member } = require('./documents/member.model')
 
 module.exports = {
   Article,

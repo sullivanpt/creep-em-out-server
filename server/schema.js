@@ -3,8 +3,8 @@
 const { merge } = require('lodash')
 const { makeExecutableSchema } = require('graphql-tools')
 
-const { schema: articleSchema, resolvers: articleResolvers } = require('./article/schema')
-const { schema: memberSchema, resolvers: memberResolvers } = require('./member/schema')
+const { schema: articleSchema, resolvers: articleResolvers } = require('./documents/article.schema')
+const { schema: memberSchema, resolvers: memberResolvers } = require('./documents/member.schema')
 
 const RootQuery = `
   type RootQuery {
