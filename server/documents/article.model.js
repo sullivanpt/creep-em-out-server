@@ -1,5 +1,7 @@
 'use strict'
 
+const logger = require('../logs').logger('article')
+
 const { pubsub } = require('../subscriptions')
 
 // TODO: replace this memory object with a DB
@@ -15,7 +17,7 @@ class Article {
     // TODO: any validations on data, rate limiting, etc.
     let result = new Article(data.text, author)
     articles.push(result)
-    console.info(`New article by member ${author.handle}`)
+    logger.debug(`New article by member ${author.handle}`)
     pubsub.publish('articleAdded', result)
     return Promise.resolve(result)
   }

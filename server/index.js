@@ -1,5 +1,8 @@
 'use strict'
 
+const logs = require('./logs')
+const logger = logs.logger('server')
+
 const fs = require('fs')
 const path = require('path')
 const httpErrors = require('http-errors')
@@ -10,7 +13,6 @@ const helmet = require('helmet')
 const cookieParser = require('cookie-parser')
 const bodyParser = require('body-parser')
 const serveStatic = require('serve-static')
-const morgan = require('morgan')
 
 const { graphqlExpress, graphiqlExpress } = require('graphql-server-express')
 
@@ -43,7 +45,11 @@ function jsonCredentialsResponseHandler (req, res) {
 
 var app = express()
 
-// log HTTP requests, configure some best practices, serve some default content
+// attach a unique logging ID to every request, and selectively log HTTP requests
+app.use(logs.identifyRequest({}))
+app.use(logs.connectLogger())
+
+// configure some best practices, serve some default content
 // trust X-Forwarded-* headers from our load balancer
 app.enable('trust proxy')
 app.use(helmet())
@@ -53,16 +59,21 @@ app.use(compression())
 app.use(favicon(path.join(publicRoot, 'favicon.ico')))
 app.use(serveStatic(publicRoot))
 
-// log all routes after this path (the non-static routes)
-app.use(morgan('dev'))
-
 // note: noCache prevents IE and Safari from caching any AJAX responses
 // note: etag caching and 304s cause AJAX content issues on every browser except Chrome
 app.disable('etag')
 app.use(helmet.noCache())
 
 // end point for feature testing (note: designed to be safe in production)
-app.route('/test/error').get((req, res, next) => { next(httpErrors(400, 'error test point')) })
+app.route('/test/error/400').get((req, res, next) => { next(httpErrors(400, 'error 400 test point')) })
+app.route('/test/error/403').get((req, res, next) => { next(httpErrors(403, 'error 403 test point')) })
+
+// TODO: protect against distributed brute force signature guessing
+// suggest "white-list" approach with limited new untrusted connections per time period.
+// failing a JWT signature (not expiration) removes from whitelist.
+
+// upgrade the request logging ID to show we are authenticating the session
+app.use(logs.identifyRequest({ getTrustLevel () { return 'A' } }))
 
 // all routes after this path require session tracking using cookies.
 // the following creates a token to be returned the user agent as a cookie, if one doesn't exist.
@@ -82,12 +93,12 @@ app.use(session.routeAssociateAndRefresh({
       .then(member => {
         // lookup existing tracker. if it's null or purposely expired returned member will be null
         if (member) {
-          console.log(`returning tracker ${prevSub} as handle ${member.handle}`)
+          logger.id(req).info(`returning tracker ${prevSub} as handle ${member.handle}`)
           return [ prevSub, member ]
         } else {
           // generate a short string that humans can use to help track a user on the site and in logs
           let sub = models.Member.generateTracker()
-          console.log(`new tracker ${sub}`)
+          logger.id(req).info(`new tracker ${sub}`)
           // create a new member here and associate with the new tracker
           return Promise.all([ sub, models.Member.insert(sub) ]) // force member promise to resolve
         }
@@ -96,6 +107,12 @@ app.use(session.routeAssociateAndRefresh({
         req.member = values[1] // attach the member to the request
         return values[0] // returns prevSub or new sub back to session findSub
       })
+}))
+
+// upgrade the request logging ID to include the session and member handle
+app.use(logs.identifyRequest({
+  getTrustLevel () { return 'T' },
+  getSessionId (req) { return req.session.sub }
 }))
 
 // these paths are effectively no-ops to allow web agent and AJAX session refresh
@@ -121,8 +138,6 @@ app.use('/graphiql', graphiqlExpress({
   passHeader: "'Authorization': 'Bearer ' + (document.cookie.match('(^|;)\\s*session.jwt\\s*=\\s*([^;]+)') || []).pop()",
 }))
 
-// TODO: authenticate for sensitive routes and route handlers for same
-
 // all routes after this path require session tracking using double submit pattern on Authorization header
 // we are much less vulnerable to CSRF so we can do mutations (POST, PUT, DELETE).
 app.use(session.routeAuthenticateForMutation({
@@ -135,6 +150,8 @@ app.use(session.routeAuthenticateForMutation({
 // end point for feature testing (note: designed to be safe in production)
 app.route('/test/mutation').get(jsonCredentialsResponseHandler)
 
+// TODO: authenticate for upgrading to sensitive routes and route handlers for same (protect with per member rate limit)
+
 // the primary API route
 app.use('/graphql', bodyParser.json(), graphqlExpress((req) => {
   return {
@@ -146,14 +163,25 @@ app.use('/graphql', bodyParser.json(), graphqlExpress((req) => {
   }
 }))
 
+//
 // error handlers must be last routes defined
+//
+
+// custom error for 401 and 403
+app.use((err, req, res, next) => {
+  if (!err || ![401, 403].includes(err.status)) {
+    return next(err)
+  }
+  res.status(err.status).json({ status: err.status, message: err.message })
+})
+
 // in development mode we can pretty print any uncaught errors
 if (app.get('env') === 'development') {
   app.use(require('errorhandler')())
 }
 
 // start the server
-let appServer = app.listen(PORT, () => console.log(
+let appServer = app.listen(PORT, () => logger.always(
   `API Server build ${version.raw} is now running on http://localhost:${PORT}`
 ))
 
@@ -167,7 +195,7 @@ if (WS_PORT !== PORT) {
     res.end()
   })
 
-  websocketServer.listen(WS_PORT, () => console.log(
+  websocketServer.listen(WS_PORT, () => logger.always(
     `Websocket Server is now running on http://localhost:${WS_PORT}`
   ))
 }
@@ -181,7 +209,7 @@ var subscriptions = new SubscriptionServer({
   // use CSRF tokens instead of cookies http://www.christian-schneider.net/CrossSiteWebSocketHijacking.html
   // review https://www.owasp.org/index.php/HTML5_Security_Cheat_Sheet
   onSubscribe: (msg, params, wsReq) => {
-    console.info('subscription request')
+    logger.id(wsReq).debug('subscription request')
     return session.promiseAuthenticateForMutation({
       iss: ROOT_URL,
       secret: SESSION_SECRET,
@@ -194,7 +222,7 @@ var subscriptions = new SubscriptionServer({
             if (!member) {
               return Promise.reject(httpErrors(401, 'tracker revoked'))
             }
-            console.info(`subscription for tracker ${sub} as handle ${member.handle}`)
+            logger.id(wsReq).info(`subscription for tracker ${sub} as handle ${member.handle}`)
             return Object.assign({}, params, {
               context: {
                 member,

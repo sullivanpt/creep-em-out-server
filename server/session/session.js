@@ -72,6 +72,8 @@
  */
 'use strict'
 
+const logger = require('../logs').logger('session')
+
 const _ = require('lodash')
 const uuidV4 = require('uuid/v4')
 const httpErrors = require('http-errors')
@@ -256,7 +258,7 @@ function routeAssociateAndRefresh (options) {
         } else {
           // session token supplied and valid and nearly expired so lets refresh it
           return authenticateCookie(req, cookieNames.refresh, options, (err, refreshDecoded) => {
-            console.info('jwt cookie %s %j', cookieNames.refresh, err || decoded)
+            logger.id(req).debug('jwt cookie %s %j', cookieNames.refresh, err || decoded)
             if (err || req.session.sub !== _.get(refreshDecoded, 'sub')) {
               // refresh token available and invalid or for different subject, so the supplied session token is now suspect. throw it out
               req.session = {} // discard previous authentication
@@ -269,7 +271,7 @@ function routeAssociateAndRefresh (options) {
       } else if (req.session.decoded.scope !== 'refresh') {
         // refresh token supplied and valid, need to load session token
         return authenticateCookie(req, cookieNames.session, options, (err, sessionDecoded) => {
-          console.info('jwt cookie %s %j', cookieNames.session, err || decoded)
+          logger.id(req).debug('jwt cookie %s %j', cookieNames.session, err || decoded)
           if (!err &&
             sessionDecoded &&
             sessionDecoded.sub === req.session.sub &&
@@ -294,7 +296,7 @@ function routeAssociateAndRefresh (options) {
       return next() // already authorized
     }
     return authenticateHeaderIfPresent(req, options, (err, decoded) => {
-      console.info('jwt header %j', err || decoded)
+      logger.id(req).debug('jwt header %j', err || decoded)
       if (err) {
         return next(err) // pass fatal error
       }
@@ -315,7 +317,7 @@ function routeAssociateAndRefresh (options) {
       } else {
         // authorize header session jwt not present. use the refresh cookie
         return authenticateCookie(req, cookieNames.refresh, options, (err, decoded) => {
-          console.info('jwt cookie %s %j', cookieNames.refresh, err || decoded)
+          logger.id(req).debug('jwt cookie %s %j', cookieNames.refresh, err || decoded)
           if (err) {
             return next(err) // pass fatal error
           }

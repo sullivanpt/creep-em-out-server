@@ -1,5 +1,7 @@
 'use strict'
 
+const logger = require('../logs').logger('member')
+
 // TODO: replace this memory object with a DB
 let trackerToMember = new Map()
 
@@ -28,24 +30,24 @@ class Member {
     let member = new Member(handle || Member.generateTracker(), tracker)
     trackerToMember.set(member.handle, member)
     trackerToMember.set(tracker, member)
-    console.info(`insert handle ${member.handle} with tracker ${tracker}`)
+    logger.debug(`insert handle ${member.handle} with tracker ${tracker}`)
     return Promise.resolve(member)
   }
 
   static getByHandle (handle) {
     let member = trackerToMember.get(handle)
-    console.info('getByHandle %s %s', handle, !!member)
+    logger.debug('getByHandle %s %s', handle, !!member)
     return Promise.resolve(member)
   }
 
   static findByTracker (tracker) {
     let member = trackerToMember.get(tracker)
-    console.info('findByTracker %s is handle %s', tracker, member && member.handle)
+    logger.debug('findByTracker %s is handle %s', tracker, member && member.handle)
     return Promise.resolve(member)
   }
 
   static blackListTracker (tracker) {
-    console.info('blackListTracker %s', tracker)
+    logger.debug('blackListTracker %s', tracker)
     trackerToMember.delete(tracker)
   }
 }

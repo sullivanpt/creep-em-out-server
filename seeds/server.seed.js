@@ -3,10 +3,12 @@
  */
 'use strict'
 
+const logger = require('../server/logs').logger('seeds')
+
 const _ = require('lodash')
 const models = require('../server/models')
 
-console.log('Seeding models with sample data')
+logger.always('Seeding models with sample data')
 
 /**
  * Create mock text for article
