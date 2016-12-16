@@ -5,6 +5,7 @@ const { makeExecutableSchema } = require('graphql-tools')
 
 const { schema: articleSchema, resolvers: articleResolvers } = require('./documents/article.schema')
 const { schema: memberSchema, resolvers: memberResolvers } = require('./documents/member.schema')
+const { schema: topicSchema, resolvers: topicResolvers } = require('./documents/topic.schema')
 
 const RootQuery = `
   type RootQuery {
@@ -14,8 +15,11 @@ const RootQuery = `
     # Return the currently logged in user, or null if nobody is logged in
     currentMember: Member
 
+    # Retrieve Topics
+    topics: [Topic]
+
     # Retrieve Articles
-    articles(authorHandle: String): [Article]
+    articles(authorHandle: String, topicId: String): [Article]
   }
 `
 
@@ -41,9 +45,12 @@ const rootResolvers = {
     currentMember (root, args, context) {
       return context.member || null
     },
-    articles (root, { authorHandle }, context) {
+    topics (root, args, context) {
+      return context.models.Topic.find()
+    },
+    articles (root, { authorHandle, topicId }, context) {
       return context.models.Member.getByHandle(authorHandle)
-        .then(author => context.models.Article.findByAuthor(author))
+        .then(author => context.models.Article.findByAuthor(author, topicId))
     },
   },
   RootSubscription: {
@@ -55,8 +62,8 @@ const rootResolvers = {
 
 // Put schema together into one array of schema strings
 // and one map of resolvers, like makeExecutableSchema expects
-const schema = [SchemaDefinition, RootQuery, RootSubscription, ...articleSchema, ...memberSchema]
-const resolvers = merge(rootResolvers, articleResolvers, memberResolvers)
+const schema = [SchemaDefinition, RootQuery, RootSubscription, ...articleSchema, ...memberSchema, ...topicSchema]
+const resolvers = merge(rootResolvers, articleResolvers, memberResolvers, topicResolvers)
 
 const executableSchema = makeExecutableSchema({
   typeDefs: schema,

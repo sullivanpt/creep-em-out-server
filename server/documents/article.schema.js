@@ -2,6 +2,7 @@
 
 const Article = `
   type Article {
+    topicId: String,
     text: String,
     author: Member
   }
@@ -9,5 +10,7 @@ const Article = `
 
 exports.schema = [Article]
 exports.resolvers = {
-  Article: {},
+  Article: {
+    topicId (article) { return article.topic.id },
+  },
 }

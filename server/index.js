@@ -68,9 +68,10 @@ app.use(helmet.noCache())
 app.route('/test/error/400').get((req, res, next) => { next(httpErrors(400, 'error 400 test point')) })
 app.route('/test/error/403').get((req, res, next) => { next(httpErrors(403, 'error 403 test point')) })
 
-// TODO: protect against distributed brute force signature guessing
+// TODO: protect against distributed brute force signature guessing; although not needed with a sufficiently random key.
 // suggest "white-list" approach with limited new untrusted connections per time period.
 // failing a JWT signature (not expiration) removes from whitelist.
+// Interesting aside see https://community.risingstack.com/zeromq-node-js-cracking-jwt-tokens-part2/
 
 // upgrade the request logging ID to show we are authenticating the session
 app.use(logs.identifyRequest({ getTrustLevel () { return 'A' } }))
@@ -126,7 +127,8 @@ app.route('/api/refresh').get(jsonCredentialsResponseHandler)
 app.use('/graphiql', graphiqlExpress({
   endpointURL: '/graphql',
   query: `{
-  articles (authorHandle: "") {
+  articles (authorHandle: "", topicId: "") {
+    topicId,
     text,
     author {
       handle
@@ -135,7 +137,7 @@ app.use('/graphiql', graphiqlExpress({
 }`,
   // copy session.jwt cookie to header of GraphiQL requests for routeAuthenticateForMutation
   // See http://dev.apollodata.com/tools/graphql-server/graphiql.html and http://stackoverflow.com/a/25490531
-  passHeader: "'Authorization': 'Bearer ' + (document.cookie.match('(^|;)\\s*session.jwt\\s*=\\s*([^;]+)') || []).pop()",
+  passHeader: "'Authorization': 'Bearer ' + (document.cookie.match('(^|;)\\\\s*session.jwt\\\\s*=\\\\s*([^;]+)') || []).pop()",
 }))
 
 // all routes after this path require session tracking using double submit pattern on Authorization header

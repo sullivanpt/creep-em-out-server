@@ -20,9 +20,10 @@ function mockText () {
 /**
  * Create a few members and articles
  */
+let topic = models.Topic.getById('flame')
 _.times(3, () => {
   models.Member.insert(models.Member.generateTracker())
     .then(member => {
-      models.Article.insert({ text: mockText() }, member)
+      models.Article.insert(topic, { text: mockText() }, member)
     })
 })
