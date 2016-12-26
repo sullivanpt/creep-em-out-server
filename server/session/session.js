@@ -14,7 +14,10 @@
  * We will use three tokens to identify web user agents.
  * - "session token" - a less secure short life cookie used for all "typical" web requests
  * - "refresh token" - a more secure long life cookie to "pin" returning user identity used to grant new session tokens
- * - "sensitive token" - a less secure short life cookie used for "sensitive" web requests (protected private data)
+ *
+ * We further add scope to the session token for these additional permissions.
+ * - "sensitive" - a less secure short life permission used for "sensitive" web requests (protected private data)
+ * - "moderate" - a less secure short life permission used for "moderate" web requests (changing other's public data)
  *
  * We're still using httpOnly cookies to store long lived session identifier; hereafter the refresh token. The refresh
  * token will be somewhat protected from XSS but left purposely vulnerable to CSRF; the CSRF will be mitigated
@@ -27,7 +30,7 @@
  * tokens by updating the tracker database, and referencing this database during "relatively" rare refresh events.
  * FUTURE: let user opt-in to long life cookie; in this case user must opt in before creating new content.
  *
- * We use a non-httpOnly cookie to store the short lived session and sensitive identifiers. Delivering these in
+ * We use a non-httpOnly cookie to store the short lived session identifier. Delivering these in
  * cookie form should help keep them unavailable to COR access.  These tokens are more susceptible to XSS and
  * we try to mitigate this by keeping their lifespan extremely short; as an aside, any XSS "loses the castle keys"
  * anyway. We mitigate CSRF against these short lived tokens in these ways:
@@ -40,9 +43,9 @@
  * The session token is automatically refreshed when feasible as it nears it's expire time.  However, a SPA client making
  * AJAX infrequent requests may have proactively refresh the token or recover and try again on expiration.
  *
- * The sensitive token must be manually granted and requires additional authentication (password) to be granted. A SPA
- * client is responsible for providing a "pleasant experience" around token expiration and for not accidentally
- * keeping the sensitive token or the secrets required to grant it available longer than needed.
+ * The sensitive scope must be manually granted and requires additional authentication (password) to be granted. A SPA
+ * client is responsible for providing a "pleasant experience" around permission expiration and for not accidentally
+ * keeping the sensitive permission or the secrets required to grant it available longer than needed.
  * Adding secondary authentication parameters is opt-in, the client should encourage adding it when sensitive data
  * is added to the user record.
  *
@@ -50,9 +53,7 @@
  *   exp/iat/jti: typical usage; jti is unique across all types of tokens so we can keep analytics
  *   iss: server website URL (env.ROOT_URL)
  *   sub: unique user agent tracker ID; this value remains unchanged across refresh events
- *   scope: on of 'refresh','session','sensitive'. FUTURE: support structured scope only if  needed
- *
- * TODO: session token scope for non-sensitive privileged operations like moderating.
+ *   scope: one of 'refresh' or 'session'. Or an array of 'session' plus 'sensitive' and or 'moderate'
  *
  * See https://www.npmjs.com/package/learn-json-web-tokens
  *
@@ -60,6 +61,7 @@
  *   decoded: one of the decoded, validated and not revoked JWT tokens (refresh, session or sensitive)
  *   sub: copy of the token subject (decoded.sub)
  *   sensitive: token scope as flags (decoded.scope)
+ *   moderate: token scope as flags (decoded.scope)
  *   mutation: true if the authentication is resistant to CSRF
  *
  * HISTORY:
@@ -83,7 +85,6 @@ const jsonWebToken = require('jsonwebtoken')
 const cookieNames = {
   refresh: 'refresh.jwt',
   session: 'session.jwt',
-  // FUTURE: ?? sensitive: 'sensitive.jwt',
 }
 
 /**
@@ -198,9 +199,12 @@ function almostExpired (decoded, options) {
  */
 function promoteDecodedToSession (decoded) {
   let result = { sub: decoded.sub }
-  if (decoded.scope === 'sensitive') {
-    result.sensitive = true
-  }
+  let scopeArray = _.isArray(decoded.scope) ? decoded.scope : [decoded.scope];
+  [ 'sensitive', 'moderate' ].forEach((permission) => {
+    if (scopeArray.includes(permission)) {
+      result[permission] = true
+    }
+  })
   return result
 }
 
@@ -251,7 +255,7 @@ function routeAssociateAndRefresh (options) {
         // this probably indicates session was used in AJAX authorization and cookies are not being used
         return next()
       }
-      if (req.session.decoded.scope === 'session') {
+      if (req.session.decoded.scope !== 'refresh') { // i.e. scope === 'session' or scope.contains('session')
         if (!almostExpired(req.session.decoded, options.sessionEarlyRefresh)) {
           // if session token supplied and valid and not nearly expired then we don't refresh it yet
           return next()
@@ -268,7 +272,7 @@ function routeAssociateAndRefresh (options) {
             newSessionCookie(req, res, req.session.sub, options, (err, jwt) => next(err))
           })
         }
-      } else if (req.session.decoded.scope !== 'refresh') {
+      } else if (req.session.decoded.scope === 'refresh') {
         // refresh token supplied and valid, need to load session token
         return authenticateCookie(req, cookieNames.session, options, (err, sessionDecoded) => {
           logger.id(req).debug('jwt cookie %s %j', cookieNames.session, err || decoded)

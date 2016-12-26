@@ -51,21 +51,29 @@ function generateId () {
 }
 
 /**
- * Middleware to attach a unique log ID to each request as req.logId = 'T RRRRR SSSSS'
+ * Attach a unique log ID to an object as obj.logId = 'T RRRRR SSSSS'
  * Safe to call multiple times to change the trustLevel or sessionId
  * options {
  *   getTrustLevel(req) => 'U', 'T', 'A' or '-'
  *   getSessionId(req) => String or '-'
  * }
  */
+function identifyObject (obj, options) {
+  let [ trustLevel, reqId, sessionId ] = (obj.logId || '').split(' ')
+  obj.logId = [
+    options.getTrustLevel && options.getTrustLevel(obj) || trustLevel || 'U',
+    reqId || generateId(),
+    options.getSessionId && options.getSessionId(obj) || sessionId || '-',
+  ].join(' ')
+}
+exports.identifyObject = identifyObject
+
+/**
+ * Middleware apply identifyObject on each request
+ */
 function identifyRequest (options) {
   return function identifyRequestHandler (req, res, next) {
-    let [ trustLevel, reqId, sessionId ] = (req.logId || '').split(' ')
-    req.logId = [
-      options.getTrustLevel && options.getTrustLevel(req) || trustLevel || 'U',
-      reqId || generateId(),
-      options.getSessionId && options.getSessionId(req) || sessionId || '-',
-    ].join(' ')
+    identifyObject(req, options)
     next()
   }
 }

@@ -159,6 +159,8 @@ app.use('/graphql', bodyParser.json(), graphqlExpress((req) => {
   return {
     schema,
     context: {
+      logId: req.logId,
+      session: req.session,
       member: req.member,
       models,
     }
@@ -211,6 +213,7 @@ var subscriptions = new SubscriptionServer({
   // use CSRF tokens instead of cookies http://www.christian-schneider.net/CrossSiteWebSocketHijacking.html
   // review https://www.owasp.org/index.php/HTML5_Security_Cheat_Sheet
   onSubscribe: (msg, params, wsReq) => {
+    logs.identifyObject(wsReq, { getTrustLevel () { return 'A' } })
     logger.id(wsReq).debug('subscription request')
     return session.promiseAuthenticateForMutation({
       iss: ROOT_URL,
@@ -224,9 +227,15 @@ var subscriptions = new SubscriptionServer({
             if (!member) {
               return Promise.reject(httpErrors(401, 'tracker revoked'))
             }
+            logs.identifyObject(wsReq, {
+              getTrustLevel () { return 'T' },
+              getSessionId () { return sub }
+            })
             logger.id(wsReq).info(`subscription for tracker ${sub} as handle ${member.handle}`)
             return Object.assign({}, params, {
               context: {
+                logId: wsReq.logId,
+                session: {}, // do not need any session permissions
                 member,
                 models,
               },
